@@ -5,7 +5,7 @@ folder <- "../rds/gaussian_het"
 dir.create(folder, showWarnings = FALSE)
 
 # if x is given, only generate response again
-generate_hom_gaussian <- function(n,d,x=NULL)
+generate_het_gaussian <- function(n,d,x=NULL)
 {
   if(is.null(x))
   {
@@ -19,12 +19,12 @@ generate_hom_gaussian <- function(n,d,x=NULL)
 n_repetitions <- 10000
 n_each_set_grid <- round(seq(100,2000,length.out = 10)) # size of I1 and I2
 n_test <- 5000 # to check coverage
-d <- 1
+d <- 100
 k <- 100
 percent_train <- 0.7
 alpha <- 0.1
 
-generate_data <- function(n,x=NULL) {generate_hom_gaussian(n=n,d=d,x=x)}
+generate_data <- function(n,x=NULL) {generate_het_gaussian(n=n,d=d,x=x)}
 
 data_test_aux <- generate_data(n=n_test) # used to fix x test
 cd_split_global <- list()
@@ -43,7 +43,7 @@ for(n_each_index in seq_along(n_each_set_grid))
                                 yTrain = data_I1$y[which_train,drop=FALSE],
                                 xValidation=data_I1$x[-which_train,,drop=FALSE],
                                 yValidation = data_I1$y[-which_train,drop=FALSE])
-  pred_I2 <- predict(cde_fit,data_I2$y)
+  pred_I2 <- predict(cde_fit,data_I2$x)
   t_grid <- seq(0,max(pred_I2$CDE),length.out = 1000)
   
   regression_fit <- fit_regression_forest(xTrain=data_I1$x[which_train,,drop=FALSE],
