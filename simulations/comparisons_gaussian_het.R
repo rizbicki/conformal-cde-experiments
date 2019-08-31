@@ -101,7 +101,7 @@ for(n_each_index in seq_along(n_each_set_grid))
   bands_reg_w <- list()
   for(rep in 1:n_repetitions)
   {
-#print(rep)
+    #print(rep)
     data_test <- generate_data(n=n_test,x=data_test_aux$x)
     
     
