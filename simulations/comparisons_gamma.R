@@ -34,7 +34,7 @@ cd_split_local <- list()
 dist_split <- list()
 reg_split <- list()
 reg_split_w <- list()
-for(n_each_index in seq_along(n_each_set_grid))
+for(n_each_index in 1:length(n_each_set_grid))
 {
   print(n_each_index/length(n_each_set_grid))
   data_I1 <- generate_data(n=n_each_set_grid[n_each_index])
