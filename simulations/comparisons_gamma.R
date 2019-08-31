@@ -1,32 +1,34 @@
 source("../requirements.R")
 source("../base_functions.R")
 
-folder <- "../rds/gaussian_hom/"
+folder <- "../rds/gamma/"
 dir.create(folder, showWarnings = FALSE)
 
 # if x is given, only generate response again
-generate_hom_gaussian <- function(n,d,x=NULL)
+generate_gamma <- function(n,d,x=NULL)
 {
   if(is.null(x))
   {
     x=matrix(runif(n*d,-5,5),n,d)
   }
   # response
-  y=x[,1]+rnorm(nrow(x),0,1)
+  y=rgamma(nrow(x),1+2*abs(x[,1]),1+2*abs(x[,1]))
   return(list(x=x,y=y))
 }
 
 n_repetitions <- 10000
 n_each_set_grid <- round(seq(100,2000,length.out = 10)) # size of I1 and I2
 n_test <- 5000 # to check coverage
-d <- 1
+d <- 100
 k <- 100
 percent_train <- 0.7
 alpha <- 0.1
 
-generate_data <- function(n,x=NULL) {generate_hom_gaussian(n=n,d=d,x=x)}
+generate_data <- function(n,x=NULL) {generate_gamma(n=n,d=d,x=x)}
 
 data_test_aux <- generate_data(n=n_test) # used to fix x test
+plot(data_test_aux$x[,1],data_test_aux$y)
+
 cd_split_global <- list()
 cd_split_local <- list()
 dist_split <- list()

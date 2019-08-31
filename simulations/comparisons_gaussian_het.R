@@ -1,7 +1,7 @@
 source("../requirements.R")
 source("../base_functions.R")
 
-folder <- "../rds/gaussian_het"
+folder <- "../rds/gaussian_het/"
 dir.create(folder, showWarnings = FALSE)
 
 # if x is given, only generate response again
