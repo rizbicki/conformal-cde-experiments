@@ -2,7 +2,8 @@ fit_density_forest <- function(xTrain,yTrain,xValidation,yValidation)
 {
   fit=fitFlexCoDE(xTrain=xTrain,zTrain=yTrain,
                   xValidation=xValidation,zValidation=yValidation,nIMax = 20,
-                  regressionFunction = regressionFunction.Forest)
+                  regressionFunction = regressionFunction.Forest,
+                  regressionFunction.extra = list(nCores=3))
   return(fit)
 }
 
@@ -294,3 +295,54 @@ eval_prediction_bands <- function(xTest,
               mean_absolute_deviation_size=mean_absolute_deviation_size))
 }
 
+read_all_rds <- function(folder)
+{
+  
+  data_plot <- paste0(folder,list.files(pattern = ".RDS",path = folder)) %>%
+    map(readRDS) 
+  
+  data_plot <- lapply(data_plot, function(x) {
+    data <- matrix(NA,length(x),length(x[[1]]))
+    colnames(data) <- names(x[[1]])
+    for(ii in 1:length(x))
+    {
+      data[ii,] <- unlist(x[[ii]])
+    }
+    return(data)
+  })
+  names(data_plot) <- tools::file_path_sans_ext(list.files(pattern = ".RDS",path = folder))
+  data_plot <- ldply(data_plot, data.frame)
+  return(data_plot)
+}
+
+plot_perfomance_n <- function(data_plot)
+{
+  
+  g <- ggplot(data_plot) +
+    geom_line(aes(x=n,y=global_coverage,color=.id,linetype=.id),size=2)+
+    theme_minimal(base_size = 14)+ ylab("Global coverage")+
+    scale_y_continuous(labels = scales::percent_format(accuracy = 1))+ 
+    expand_limits(y = c(0,1))+
+    theme(legend.title = element_blank()) 
+  print(g)
+  
+  g <- ggplot(data_plot) +
+    geom_line(aes(x=n,y=mean_absolute_deviation_coverage,color=.id,linetype=.id),size=2)+
+    theme_minimal(base_size = 14)+ ylab("Conditonal coverage absolute deviation")+
+    scale_y_continuous(labels = scales::percent_format(accuracy = 1))+ 
+    expand_limits(y = 0)+
+    theme(legend.title = element_blank()) 
+  print(g)
+
+  g <- ggplot(data_plot) +
+    geom_line(aes(x=n,y=average_size,color=.id,linetype=.id),size=2)+
+    theme_minimal(base_size = 14)+ ylab("Average size")+
+    theme(legend.title = element_blank()) 
+  print(g)
+  
+  g <- ggplot(data_plot) +
+    geom_line(aes(x=n,y=mean_absolute_deviation_size,color=.id,linetype=.id),size=2)+
+    theme_minimal(base_size = 14)+ ylab("Size absolute deviation")+
+    theme(legend.title = element_blank()) 
+  print(g)
+}

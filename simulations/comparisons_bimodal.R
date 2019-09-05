@@ -1,18 +1,22 @@
 source("../requirements.R")
 source("../base_functions.R")
 
-folder <- "../rds/gamma/"
+folder <- "../rds/bimodal/"
 dir.create(folder, showWarnings = FALSE)
 
 # if x is given, only generate response again
-generate_gamma <- function(n,d,x=NULL)
+generate_bimodal <- function(n,d,x=NULL)
 {
   if(is.null(x))
   {
-    x=matrix(runif(n*d,-5,5),n,d)
+    x=matrix(runif(n*d,-1.5,1.5),n,d)
   }
+  f=(x[,1]-1)^2*(x[,1]+1)
+  g=rep(0,n)
+  g[x[,1]> -0.5]=2*sqrt(x[x[,1]> -0.5,1]+0.5)
+  s=1/4+abs(x[,1])
   # response
-  y=rgamma(nrow(x),1+2*abs(x[,1]),1+2*abs(x[,1]))
+  y=ifelse(runif(n)>0.5,f-g,f+g)+rnorm(n,0,sqrt(s))
   return(list(x=x,y=y))
 }
 
@@ -25,7 +29,7 @@ k <- 100
 percent_train <- 0.7
 alpha <- 0.1
 
-generate_data <- function(n,x=NULL) {generate_gamma(n=n,d=d,x=x)}
+generate_data <- function(n,x=NULL) {generate_bimodal(n=n,d=d,x=x)}
 
 data_test_aux <- generate_data(n=n_test) # used to fix x test
 plot(data_test_aux$x[,1],data_test_aux$y)
@@ -207,3 +211,4 @@ ggplot(data_plot) +
   geom_line(aes(x=n,y=mean_absolute_deviation_size,color=.id,linetype=.id),size=2)+
   theme_minimal(base_size = 14)+ ylab("Size absolute deviation")+
   theme(legend.title = element_blank()) 
+
