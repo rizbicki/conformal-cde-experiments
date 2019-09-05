@@ -140,30 +140,41 @@ for(n_each_index in 1:length(n_each_set_grid))
                                                            alpha=alpha)
   cd_split_global[[n_each_index]]$n <- n_each_set_grid[n_each_index]
   saveRDS(cd_split_global,file = paste0(folder,"cd_split_global.RDS"))
+  rm(bands_global)
+  gc()
   
   cd_split_local[[n_each_index]] <- eval_prediction_bands(xTest=data_test$x,
                                                           bands_local,
                                                           alpha=alpha)
   cd_split_local[[n_each_index]]$n <- n_each_set_grid[n_each_index]
   saveRDS(cd_split_local,file = paste0(folder,"cd_split_local.RDS"))
+  rm(bands_local)
+  gc()
   
   dist_split[[n_each_index]] <- eval_prediction_bands(xTest=data_test$x,
                                                       bands_dist,
                                                       alpha=alpha)
   dist_split[[n_each_index]]$n <- n_each_set_grid[n_each_index]
   saveRDS(dist_split,file = paste0(folder,"dist_split.RDS"))
+  rm(bands_dist)
+  gc()
   
   reg_split[[n_each_index]] <- eval_prediction_bands(xTest=data_test$x,
                                                      bands_reg,
                                                      alpha=alpha)
   reg_split[[n_each_index]]$n <- n_each_set_grid[n_each_index]
   saveRDS(reg_split,file = paste0(folder,"reg_split.RDS"))
+  rm(bands_reg)
+  gc()
   
   reg_split_w[[n_each_index]] <- eval_prediction_bands(xTest=data_test$x,
                                                        bands_reg_w,
                                                        alpha=alpha)
   reg_split_w[[n_each_index]]$n <- n_each_set_grid[n_each_index]
   saveRDS(reg_split_w,file = paste0(folder,"reg_split_w.RDS"))
+  rm(bands_reg_w)
+  gc()
+  
 }
 
 

@@ -3,7 +3,7 @@ fit_density_forest <- function(xTrain,yTrain,xValidation,yValidation)
   fit=fitFlexCoDE(xTrain=xTrain,zTrain=yTrain,
                   xValidation=xValidation,zValidation=yValidation,nIMax = 20,
                   regressionFunction = regressionFunction.Forest,
-                  regressionFunction.extra = list(nCores=3))
+                  regressionFunction.extra = list(nCores=5))
   return(fit)
 }
 
@@ -169,6 +169,7 @@ dist_split_prediction_bands_evalY <- function(fit_dist_split,
                                                  function(x)
                                                    mean(x))*diff(range(fit_dist_split$y_grid))
   fit_dist_split$prediction_bands <- NULL
+  fit_dist_split$FTest <- NULL
   return(fit_dist_split)
 }
 
@@ -214,7 +215,7 @@ reg_split_prediction_bands_evalY <- function(fit_reg_split,
                                                 function(x)
                                                   mean(x))*diff(range(fit_reg_split$y_grid))
   fit_reg_split$prediction_bands <- NULL
-  fit_reg_weighted_split$pred_test_mean <- NULL
+  fit_reg_split$pred_test <- NULL
   return(fit_reg_split)
 }
 
@@ -243,7 +244,7 @@ reg_weighted_split_prediction_bands <- function(reg_fit_mean,
   ths <- quantile(conformity_score_train,probs=alpha)
   for(ii in 1:nrow(xTest))
   {
-    prediction_bands_which_belong[[ii]] <- -abs(y_grid-pred_test_mean[ii])/pred_test_error >=ths
+    prediction_bands_which_belong[[ii]] <- -abs(y_grid-pred_test_mean[ii])/pred_test_error[ii] >=ths
   }
   return(list(prediction_bands=prediction_bands_which_belong,
               y_grid=y_grid,pred_test_mean=pred_test_mean,
