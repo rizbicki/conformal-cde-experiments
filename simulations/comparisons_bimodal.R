@@ -20,11 +20,11 @@ generate_bimodal <- function(n,d,x=NULL)
   return(list(x=x,y=y))
 }
 
-n_fits <- 100 # total numer of I1 datasets
-n_repetitions <- 500 # total numer of I2 datasets
+n_fits <- 25 # total numer of I1 datasets
+n_repetitions <- 2000 # total numer of I2 datasets
 n_each_set_grid <- c(200,500,1000,2000,3000) # size of I1 and I2
 n_test <- 5000 # to check coverage
-d <- 100
+d <- 50
 k <- 100
 percent_train <- 0.7
 alpha <- 0.1
@@ -43,6 +43,11 @@ for(n_each_index in 1:length(n_each_set_grid))
 {
   print(n_each_index/length(n_each_set_grid))
   rep <- 1
+  bands_global <- list()
+  bands_local <- list()
+  bands_dist <- list()
+  bands_reg <- list()
+  bands_reg_w <- list()
   for(n_fits_index in 1:n_fits)
   {
     cat(".")
@@ -105,11 +110,6 @@ for(n_each_index in 1:length(n_each_set_grid))
                                                                   alpha=alpha,
                                                                   y_grid = pred_I2$z)
     
-    bands_global <- list()
-    bands_local <- list()
-    bands_dist <- list()
-    bands_reg <- list()
-    bands_reg_w <- list()
     for(ll in 1:n_repetitions)
     {
       data_test <- generate_data(n=n_test,x=data_test_aux$x)

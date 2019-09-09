@@ -280,19 +280,43 @@ eval_prediction_bands <- function(xTest,
 {
   coverage <- lapply(bands, function (x) x[[c('yTest_covered')]])
   coverage <- do.call(rbind,coverage)
-  coverage <- colMeans(coverage)
-  global_coverage <- mean(coverage)
-  mean_absolute_deviation_coverage <- mean(abs(coverage-(1-alpha)))
+  coverage_mean <- colMeans(coverage)
+  global_coverage <- mean(coverage_mean)
+  
+  B <- 200
+  mean_absolute_deviation_coverage_vec <- rep(NA,B)
+  for(b in 1:B)
+  {
+    which_sample_boot <- sample(1:nrow(coverage),
+                                size = nrow(coverage),
+                                replace=TRUE)
+    coverage_mean_boot <- colMeans(coverage[which_sample_boot,])
+    mean_absolute_deviation_coverage_vec[b] <- mean(abs(coverage_mean_boot-(1-alpha)))
+  }
+  mean_absolute_deviation_coverage <- mean(abs(coverage_mean-(1-alpha)))
+  mean_absolute_deviation_coverage_se <- sd(mean_absolute_deviation_coverage_vec)
   
   size <- lapply(bands, function (x) x[[c('prediction_bands_size')]])
   size <- do.call(rbind,size)
-  size <- colMeans(size)
+  size_mean <- colMeans(size)
   average_size <- mean(size)
+  average_size_vec <- rep(NA,B)
+  for(b in 1:B)
+  {
+    which_sample_boot <- sample(1:nrow(size),
+                                size = nrow(size),
+                                replace=TRUE)
+    average_size_vec[b] <- mean(colMeans(size[which_sample_boot,]))
+  }
+  average_size_se <- sd(average_size_vec)
+  
   mean_absolute_deviation_size <- mean(abs(size-average_size))
   
   return(list(global_coverage=global_coverage,
               mean_absolute_deviation_coverage=mean_absolute_deviation_coverage,
+              mean_absolute_deviation_coverage_se=mean_absolute_deviation_coverage_se,
               average_size=average_size,
+              average_size_se=average_size_se,
               mean_absolute_deviation_size=mean_absolute_deviation_size))
 }
 
