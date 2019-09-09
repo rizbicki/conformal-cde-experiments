@@ -17,8 +17,8 @@ generate_gamma <- function(n,d,x=NULL)
 }
 
 n_fits <- 100 # total numer of I1 datasets
-n_repetitions <- 1000 # total numer of I2 datasets
-n_each_set_grid <- c(200,500,1000,2000,5000) # size of I1 and I2
+n_repetitions <- 500 # total numer of I2 datasets
+n_each_set_grid <- c(200,500,1000,2000,3000) # size of I1 and I2
 n_test <- 5000 # to check coverage
 d <- 100
 k <- 100

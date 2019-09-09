@@ -3,7 +3,7 @@ fit_density_forest <- function(xTrain,yTrain,xValidation,yValidation)
   fit=fitFlexCoDE(xTrain=xTrain,zTrain=yTrain,
                   xValidation=xValidation,zValidation=yValidation,nIMax = 20,
                   regressionFunction = regressionFunction.Forest,
-                  regressionFunction.extra = list(nCores=5))
+                  regressionFunction.extra = list(nCores=8))
   return(fit)
 }
 
