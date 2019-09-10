@@ -21,7 +21,7 @@ generate_bimodal <- function(n,d,x=NULL)
 }
 
 n_fits <- 25 # total numer of I1 datasets
-n_repetitions <- 2000 # total numer of I2 datasets
+n_repetitions <- 1000 # total numer of I2 datasets
 n_each_set_grid <- c(200,500,1000,2000,3000) # size of I1 and I2
 n_test <- 5000 # to check coverage
 d <- 50
@@ -143,29 +143,34 @@ for(n_each_index in 1:length(n_each_set_grid))
                                                            bands_global,
                                                            alpha=alpha)
   cd_split_global[[n_each_index]]$n <- n_each_set_grid[n_each_index]
+  rm(bands_global)
   saveRDS(cd_split_global,file = paste0(folder,"cd_split_global.RDS"))
   
   cd_split_local[[n_each_index]] <- eval_prediction_bands(xTest=data_test$x,
                                                           bands_local,
                                                           alpha=alpha)
   cd_split_local[[n_each_index]]$n <- n_each_set_grid[n_each_index]
+  rm(bands_local)
   saveRDS(cd_split_local,file = paste0(folder,"cd_split_local.RDS"))
   
   dist_split[[n_each_index]] <- eval_prediction_bands(xTest=data_test$x,
                                                       bands_dist,
                                                       alpha=alpha)
   dist_split[[n_each_index]]$n <- n_each_set_grid[n_each_index]
+  rm(bands_dist)
   saveRDS(dist_split,file = paste0(folder,"dist_split.RDS"))
   
   reg_split[[n_each_index]] <- eval_prediction_bands(xTest=data_test$x,
                                                      bands_reg,
                                                      alpha=alpha)
   reg_split[[n_each_index]]$n <- n_each_set_grid[n_each_index]
+  rm(bands_reg)
   saveRDS(reg_split,file = paste0(folder,"reg_split.RDS"))
   
   reg_split_w[[n_each_index]] <- eval_prediction_bands(xTest=data_test$x,
                                                        bands_reg_w,
                                                        alpha=alpha)
+  rm(bands_reg_w)
   reg_split_w[[n_each_index]]$n <- n_each_set_grid[n_each_index]
   saveRDS(reg_split_w,file = paste0(folder,"reg_split_w.RDS"))
 }
