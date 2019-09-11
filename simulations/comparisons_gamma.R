@@ -16,11 +16,11 @@ generate_gamma <- function(n,d,x=NULL)
   return(list(x=x,y=y))
 }
 
-n_fits <- 100 # total numer of I1 datasets
+n_fits <- 20 # total numer of I1 datasets
 n_repetitions <- 500 # total numer of I2 datasets
-n_each_set_grid <- c(200,500,1000,2000,3000) # size of I1 and I2
-n_test <- 5000 # to check coverage
-d <- 100
+n_each_set_grid <- c(200,500,1000,2500,5000) # size of I1 and I2
+n_test <- 2000 # to check coverage
+d <- 50
 k <- 100
 percent_train <- 0.7
 alpha <- 0.1
@@ -39,6 +39,11 @@ for(n_each_index in 1:length(n_each_set_grid))
 {
   print(n_each_index/length(n_each_set_grid))
   rep <- 1
+  bands_global <- list()
+  bands_local <- list()
+  bands_dist <- list()
+  bands_reg <- list()
+  bands_reg_w <- list()
   for(n_fits_index in 1:n_fits)
   {
     cat(".")
@@ -101,11 +106,6 @@ for(n_each_index in 1:length(n_each_set_grid))
                                                                   alpha=alpha,
                                                                   y_grid = pred_I2$z)
     
-    bands_global <- list()
-    bands_local <- list()
-    bands_dist <- list()
-    bands_reg <- list()
-    bands_reg_w <- list()
     for(ll in 1:n_repetitions)
     {
       data_test <- generate_data(n=n_test,x=data_test_aux$x)
@@ -140,70 +140,33 @@ for(n_each_index in 1:length(n_each_set_grid))
                                                            alpha=alpha)
   cd_split_global[[n_each_index]]$n <- n_each_set_grid[n_each_index]
   saveRDS(cd_split_global,file = paste0(folder,"cd_split_global.RDS"))
+  rm(bands_global)
   
   cd_split_local[[n_each_index]] <- eval_prediction_bands(xTest=data_test$x,
                                                           bands_local,
                                                           alpha=alpha)
   cd_split_local[[n_each_index]]$n <- n_each_set_grid[n_each_index]
   saveRDS(cd_split_local,file = paste0(folder,"cd_split_local.RDS"))
-  
+  rm(bands_local)
   dist_split[[n_each_index]] <- eval_prediction_bands(xTest=data_test$x,
                                                       bands_dist,
                                                       alpha=alpha)
   dist_split[[n_each_index]]$n <- n_each_set_grid[n_each_index]
   saveRDS(dist_split,file = paste0(folder,"dist_split.RDS"))
+  rm(bands_dist)
   
   reg_split[[n_each_index]] <- eval_prediction_bands(xTest=data_test$x,
                                                      bands_reg,
                                                      alpha=alpha)
   reg_split[[n_each_index]]$n <- n_each_set_grid[n_each_index]
   saveRDS(reg_split,file = paste0(folder,"reg_split.RDS"))
+  rm(bands_reg)
   
   reg_split_w[[n_each_index]] <- eval_prediction_bands(xTest=data_test$x,
                                                        bands_reg_w,
                                                        alpha=alpha)
   reg_split_w[[n_each_index]]$n <- n_each_set_grid[n_each_index]
   saveRDS(reg_split_w,file = paste0(folder,"reg_split_w.RDS"))
+  rm(bands_reg_w)
 }
 
-
-data_plot <- paste0(folder,list.files(pattern = ".RDS",path = folder)) %>%
-  map(readRDS) 
-
-data_plot <- lapply(data_plot, function(x) {
-  data <- matrix(NA,length(x),length(x[[1]]))
-  colnames(data) <- names(x[[1]])
-  for(ii in 1:length(x))
-  {
-    data[ii,] <- unlist(x[[ii]])
-  }
-  return(data)
-})
-names(data_plot) <- tools::file_path_sans_ext(list.files(pattern = ".RDS",path = folder))
-data_plot <- ldply(data_plot, data.frame)
-
-ggplot(data_plot) +
-  geom_line(aes(x=n,y=global_coverage,color=.id,linetype=.id),size=2)+
-  theme_minimal(base_size = 14)+ ylab("Global coverage")+
-  scale_y_continuous(labels = scales::percent_format(accuracy = 1))+ 
-  expand_limits(y = c(0,1))+
-  theme(legend.title = element_blank()) 
-
-
-ggplot(data_plot) +
-  geom_line(aes(x=n,y=mean_absolute_deviation_coverage,color=.id,linetype=.id),size=2)+
-  theme_minimal(base_size = 14)+ ylab("Conditonal coverage absolute deviation")+
-  scale_y_continuous(labels = scales::percent_format(accuracy = 1))+ 
-  expand_limits(y = 0)+
-  theme(legend.title = element_blank()) 
-
-
-ggplot(data_plot) +
-  geom_line(aes(x=n,y=average_size,color=.id,linetype=.id),size=2)+
-  theme_minimal(base_size = 14)+ ylab("Average size")+
-  theme(legend.title = element_blank()) 
-
-ggplot(data_plot) +
-  geom_line(aes(x=n,y=mean_absolute_deviation_size,color=.id,linetype=.id),size=2)+
-  theme_minimal(base_size = 14)+ ylab("Size absolute deviation")+
-  theme(legend.title = element_blank()) 

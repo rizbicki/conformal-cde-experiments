@@ -3,7 +3,7 @@ fit_density_forest <- function(xTrain,yTrain,xValidation,yValidation)
   fit=fitFlexCoDE(xTrain=xTrain,zTrain=yTrain,
                   xValidation=xValidation,zValidation=yValidation,nIMax = 20,
                   regressionFunction = regressionFunction.Forest,
-                  regressionFunction.extra = list(nCores=8))
+                  regressionFunction.extra = list(nCores=6))
   return(fit)
 }
 
@@ -64,7 +64,7 @@ cd_split_prediction_bands <- function(cde_fit,
   prediction_bands_which_belong <- list()
   if(k!=nrow(xTrain))
   {
-    ths <- rep(NA,nrow(xTrain))
+    ths <- rep(NA,nrow(xTest))
     g_train <- matrix(NA,nrow(xTrain),length(t_grid))
     for(ii in 1:nrow(xTrain))
     {
