@@ -21,9 +21,9 @@ generate_bimodal <- function(n,d,x=NULL)
 }
 
 n_fits <- 1 # total numer of I1 datasets
-n_repetitions <- 2000 # total numer of I2 datasets
+n_repetitions <- 500 # total numer of I2 datasets
 n_train <- 5000
-n_test <- 500 # to check coverage
+n_test <- 250 # to check coverage
 d <- 1
 k <- 100
 percent_train <- 0.7
@@ -58,7 +58,7 @@ for(n_fits_index in 1:n_fits)
                                 yTrain = data_I1$y[which_train,drop=FALSE],
                                 xValidation=data_I1$x[-which_train,,drop=FALSE],
                                 yValidation = data_I1$y[-which_train,drop=FALSE],
-                                nCores=3)
+                                nCores=8)
 
   regression_fit <- fit_regression_knn(xTrain=data_I1$x[which_train,,drop=FALSE],
                                        yTrain = data_I1$y[which_train,drop=FALSE],
@@ -74,7 +74,7 @@ for(n_fits_index in 1:n_fits)
   {
     data_I2 <- generate_data(n=n_train)
     pred_I2 <- predict(cde_fit,data_I2$x)
-    t_grid <- seq(0,max(pred_I2$CDE),length.out = 1000)
+    t_grid <- seq(0,max(pred_I2$CDE),length.out = 250)
 
     # CD-split global
     fit_cd_split_global <- cd_split_prediction_bands(cde_fit,

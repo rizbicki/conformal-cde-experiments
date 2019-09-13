@@ -70,7 +70,7 @@ for(n_each_index in 1:length(n_each_set_grid))
     {
       data_I2 <- generate_data(n=n_each_set_grid[n_each_index])
       pred_I2 <- predict(cde_fit,data_I2$x)
-      t_grid <- seq(0,max(pred_I2$CDE),length.out = 1000)
+      t_grid <- seq(0,max(pred_I2$CDE),length.out = 250)
       
       # CD-split global
       fit_cd_split_global <- cd_split_prediction_bands(cde_fit,
