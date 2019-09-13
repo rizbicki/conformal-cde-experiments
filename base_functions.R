@@ -1,9 +1,9 @@
-fit_density_forest <- function(xTrain,yTrain,xValidation,yValidation)
+fit_density_forest <- function(xTrain,yTrain,xValidation,yValidation,nCores=6)
 {
   fit=fitFlexCoDE(xTrain=xTrain,zTrain=yTrain,
                   xValidation=xValidation,zValidation=yValidation,nIMax = 20,
                   regressionFunction = regressionFunction.Forest,
-                  regressionFunction.extra = list(nCores=6))
+                  regressionFunction.extra = list(nCores=nCores))
   return(fit)
 }
 
@@ -11,6 +11,7 @@ fit_regression_forest <- function(xTrain,yTrain,xValidation,yValidation)
 {
   fit <- randomForest(x=rbind(xTrain,xValidation),
                       y=c(yTrain,yValidation))
+  #class(fit) <- "forest"
   return(fit)
 }
 
@@ -21,8 +22,80 @@ fit_regression_mean_error_forest <- function(xTrain,yTrain,xValidation,yValidati
   pred_val<- predict(fit_mean, xValidation)
   fit_error <- randomForest(x=xValidation,
                             y=abs(yValidation-pred_val))
-  return(list(fit_mean=fit_mean,
-              fit_error=fit_error))
+  fit <- list(fit_mean=fit_mean,
+              fit_error=fit_error)
+  class(fit) <- "forest_weighted"
+  return(fit)
+}
+
+fit_density_knn <- function(xTrain,yTrain,xValidation,yValidation,nCores=6)
+{
+  fit=fitFlexCoDE(xTrain=xTrain,zTrain=yTrain,
+                  xValidation=xValidation,zValidation=yValidation,nIMax = 20,
+                  regressionFunction = regressionFunction.NN,
+                  regressionFunction.extra = list(nCores=nCores))
+  return(fit)
+}
+
+fit_regression_knn <- function(xTrain,yTrain,xValidation,yValidation)
+{
+  k_grid <- round(seq(1,1000,length.out = 100))
+  error <- rep(NA,length(k_grid))
+  for(ii in 1:length(k_grid))
+  {
+    pred <- FNN::knn.reg(train=rbind(xTrain,xValidation),
+                         y=c(yTrain,yValidation),k=k_grid[ii])$pred
+    error[ii] <- mean((pred-c(yTrain,yValidation))^2)
+  }
+  fit <- list(x=rbind(xTrain,xValidation),
+              y=c(yTrain,yValidation),
+              k=k_grid[which.min(error)])
+  class(fit) <- "KNN"
+  return(fit)
+}
+
+predict.KNN <- function(fit,xTest)
+{
+  pred <- FNN::knn.reg(train=fit$x,
+                       y=fit$y,k=fit$k,test=xTest)$pred
+  return(pred)
+}
+
+fit_regression_mean_error_knn <- function(xTrain,yTrain,xValidation,yValidation)
+{
+  k_grid <- round(seq(1,1000,length.out = 100))
+  error <- rep(NA,length(k_grid))
+  for(ii in 1:length(k_grid))
+  {
+    pred <- FNN::knn.reg(train=xTrain,
+                         y=yTrain,k=k_grid[ii])$pred
+    error[ii] <- mean((pred-yTrain)^2)
+  }
+  best_k_mean <-k_grid[which.min(error)]
+
+  pred_val<- FNN::knn.reg(train=xTrain,
+                          y=yTrain,k=best_k_mean,test = xValidation)$pred
+
+  for(ii in 1:length(k_grid))
+  {
+    pred <- FNN::knn.reg(train=xValidation,
+                         y=abs(yValidation-pred_val),k=k_grid[ii])$pred
+    error[ii] <- mean((pred-abs(yValidation-pred_val))^2)
+  }
+  best_k_error <-k_grid[which.min(error)]
+  fit_mean <- list(xTrain=xTrain,
+                   yTrain=yTrain,
+                   k=best_k_mean)
+  class(fit_mean) <- "KNN"
+
+  fit_error <- list(xTrain=xValidation,
+                    yTrain=yValidation,
+                    k=best_k_error)
+  class(fit_error) <- "KNN"
+
+  fit <- list(fit_mean=fit_mean,fit_error=fit_error)
+  class(fit) <- "KNN_weighted"
+  return(fit)
 }
 
 # finds k nearest neighbors in xTrain of each xTest
@@ -42,7 +115,7 @@ profile_density <- function(t_grid,y_grid,cde_estimate)
 }
 
 # returns prediction bands for each element of xTest
-# xTrain and yTrain are is I2, hold out data not used 
+# xTrain and yTrain are is I2, hold out data not used
 #                          to fit the density cde_fit
 # t_grid is a grid of values for the f(.|x)
 cd_split_prediction_bands <- function(cde_fit,
@@ -59,7 +132,7 @@ cd_split_prediction_bands <- function(cde_fit,
                         which_neighbors(as.matrix(pred_train$z),
                                         as.matrix(yTrain),k=1))
   conformity_score_train <- pred_train$CDE[which_select]
-  
+
   #prediction_bands <- list()
   prediction_bands_which_belong <- list()
   if(k!=nrow(xTrain))
@@ -71,7 +144,7 @@ cd_split_prediction_bands <- function(cde_fit,
       g_train[ii,] <- profile_density(t_grid,pred_train$z,
                                       pred_train$CDE[ii,])
     }
-    
+
     for(ii in 1:nrow(xTest))
     {
       g_test <- profile_density(t_grid,pred_test$z,
@@ -81,7 +154,7 @@ cd_split_prediction_bands <- function(cde_fit,
       #prediction_bands[[ii]] <- pred_test$z[pred_test$CDE[ii,]>=ths]
       prediction_bands_which_belong[[ii]] <- pred_test$CDE[ii,]>=ths[ii]
     }
-    
+
   } else {
     ths <- quantile(conformity_score_train,probs=alpha)
     for(ii in 1:nrow(xTest))
@@ -90,14 +163,14 @@ cd_split_prediction_bands <- function(cde_fit,
       prediction_bands_which_belong[[ii]] <- pred_test$CDE[ii,]>=ths
     }
   }
-  
+
   return(list(prediction_bands=prediction_bands_which_belong,
-              y_grid=pred_test$z,ths=ths,pred_test=pred_test))  
-  
-  
+              y_grid=pred_test$z,ths=ths,pred_test=pred_test))
+
+
 }
 
-# Returns fit_cd_split with indicator of if each yTest  belongs to prediction band 
+# Returns fit_cd_split with indicator of if each yTest  belongs to prediction band
 #        (used for diagnostics)
 cd_split_prediction_bands_evalY <- function(fit_cd_split,yTest)
 {
@@ -124,7 +197,7 @@ cum_dist <- function(y_grid,cde_estimates,y_values)
 }
 
 # returns prediction bands for each element of xTest
-# xTrain and yTrain are is I2, hold out data not used 
+# xTrain and yTrain are is I2, hold out data not used
 #                          to fit the density cde_fit
 # t_grid is a grid of values for the f(.|x)
 dist_split_prediction_bands <- function(cde_fit,
@@ -135,24 +208,24 @@ dist_split_prediction_bands <- function(cde_fit,
 {
   pred_test <- predict(cde_fit,xTest)
   pred_train <- predict(cde_fit,xTrain)
-  
+
   ths = quantile(cum_dist(pred_train$z,pred_train$CDE,yTrain),
                  probs = c(alpha/2,1-alpha/2))
-  
+
   prediction_bands_which_belong <- list()
   FTest <- matrix(NA,nrow(xTest),length(pred_train$z))
   for (ii in 1:nrow(xTest)){
     FTest[ii,] <- cumsum(pred_test$CDE[ii,])*diff(pred_train$z)[1]
     prediction_bands_which_belong[[ii]] <- FTest[ii,]>=ths[1]&FTest[ii,]<=ths[2]
-    
+
   }
-  
+
   return(list(prediction_bands=prediction_bands_which_belong,
-              y_grid=pred_train$z,FTest=FTest,ths=ths))  
-  
+              y_grid=pred_train$z,FTest=FTest,ths=ths))
+
 }
 
-# Returns fit_dist_split with indicator of if each yTest  belongs to prediction band 
+# Returns fit_dist_split with indicator of if each yTest  belongs to prediction band
 #        (used for diagnostics)
 dist_split_prediction_bands_evalY <- function(fit_dist_split,
                                               yTest)
@@ -162,7 +235,7 @@ dist_split_prediction_bands_evalY <- function(fit_dist_split,
   for (ii in 1:length(yTest)){
     which_closest <- which.min(abs(fit_dist_split$y_grid-yTest[ii]))
     yTest_covered[ii] <- fit_dist_split$FTest[ii,which_closest]>=ths[1]&fit_dist_split$FTest[ii,which_closest]<=ths[2]
-    
+
   }
   fit_dist_split$yTest_covered <- yTest_covered
   fit_dist_split$prediction_bands_size <- sapply(fit_dist_split$prediction_bands,
@@ -173,8 +246,9 @@ dist_split_prediction_bands_evalY <- function(fit_dist_split,
   return(fit_dist_split)
 }
 
+
 # returns prediction bands for each element of xTest
-# xTrain and yTrain are is I2, hold out data not used 
+# xTrain and yTrain are is I2, hold out data not used
 #                          to fit the density cde_fit
 # t_grid is a grid of values for the f(.|x)
 reg_split_prediction_bands <- function(reg_fit,
@@ -187,23 +261,23 @@ reg_split_prediction_bands <- function(reg_fit,
   pred_train <- predict(reg_fit,xTrain)
   # observed densities:
   conformity_score_train <- -(pred_train-yTrain)^2
-  
+
   #prediction_bands <- list()
   prediction_bands_which_belong <- list()
-  
+
   ths <- quantile(conformity_score_train,probs=alpha)
   for(ii in 1:nrow(xTest))
   {
     prediction_bands_which_belong[[ii]] <- -(y_grid-pred_test[ii])^2>=ths
   }
-  
+
   return(list(prediction_bands=prediction_bands_which_belong,
-              y_grid=y_grid,pred_test=pred_test,ths=ths))  
-  
+              y_grid=y_grid,pred_test=pred_test,ths=ths))
+
 }
 
 
-# Returns fit_reg_split with indicator of if each yTest  belongs to prediction band 
+# Returns fit_reg_split with indicator of if each yTest  belongs to prediction band
 #        (used for diagnostics)
 reg_split_prediction_bands_evalY <- function(fit_reg_split,
                                              yTest)
@@ -220,7 +294,7 @@ reg_split_prediction_bands_evalY <- function(fit_reg_split,
 }
 
 # returns prediction bands for each element of xTest
-# xTrain and yTrain are is I2, hold out data not used 
+# xTrain and yTrain are is I2, hold out data not used
 #                          to fit the density cde_fit
 # t_grid is a grid of values for the f(.|x)
 reg_weighted_split_prediction_bands <- function(reg_fit_mean,
@@ -234,13 +308,13 @@ reg_weighted_split_prediction_bands <- function(reg_fit_mean,
   pred_test_mean <- predict(reg_fit_mean,xTest)
   pred_train_error <- predict(reg_fit_error,xTrain)
   pred_test_error <- predict(reg_fit_error,xTest)
-  
+
   # observed densities:
   conformity_score_train <- -abs(pred_train_mean-yTrain)/pred_train_error
-  
+
   #prediction_bands <- list()
   prediction_bands_which_belong <- list()
-  
+
   ths <- quantile(conformity_score_train,probs=alpha)
   for(ii in 1:nrow(xTest))
   {
@@ -249,9 +323,9 @@ reg_weighted_split_prediction_bands <- function(reg_fit_mean,
   return(list(prediction_bands=prediction_bands_which_belong,
               y_grid=y_grid,pred_test_mean=pred_test_mean,
               pred_test_error=pred_test_error,
-              ths=ths))  
-  
-  
+              ths=ths))
+
+
 }
 
 reg_weighted_split_prediction_bands_evalY <- function(fit_reg_weighted_split,
@@ -266,7 +340,7 @@ reg_weighted_split_prediction_bands_evalY <- function(fit_reg_weighted_split,
   fit_reg_weighted_split$prediction_bands <- NULL
   fit_reg_weighted_split$pred_test_mean <- NULL
   fit_reg_weighted_split$pred_test_error <- NULL
-  
+
   return(fit_reg_weighted_split)
 }
 
@@ -282,7 +356,7 @@ eval_prediction_bands <- function(xTest,
   coverage <- do.call(rbind,coverage)
   coverage_mean <- colMeans(coverage)
   global_coverage <- mean(coverage_mean)
-  
+
   B <- 200
   mean_absolute_deviation_coverage_vec <- rep(NA,B)
   for(b in 1:B)
@@ -295,7 +369,7 @@ eval_prediction_bands <- function(xTest,
   }
   mean_absolute_deviation_coverage <- mean(abs(coverage_mean-(1-alpha)))
   mean_absolute_deviation_coverage_se <- sd(mean_absolute_deviation_coverage_vec)
-  
+
   size <- lapply(bands, function (x) x[[c('prediction_bands_size')]])
   size <- do.call(rbind,size)
   size_mean <- colMeans(size)
@@ -309,9 +383,9 @@ eval_prediction_bands <- function(xTest,
     average_size_vec[b] <- mean(colMeans(size[which_sample_boot,]))
   }
   average_size_se <- sd(average_size_vec)
-  
+
   mean_absolute_deviation_size <- mean(abs(size-average_size))
-  
+
   return(list(global_coverage=global_coverage,
               mean_absolute_deviation_coverage=mean_absolute_deviation_coverage,
               mean_absolute_deviation_coverage_se=mean_absolute_deviation_coverage_se,
@@ -320,12 +394,28 @@ eval_prediction_bands <- function(xTest,
               mean_absolute_deviation_size=mean_absolute_deviation_size))
 }
 
+# returns statistics for evaluating prediction bands
+# xTest is the test sample that was used (x"s are always the same)
+# bands  list of outputs of cd_split_prediction_bands
+# 1-alpha is the nominal coverage
+eval_prediction_bands_conditional_coverage <- function(xTest,
+                                                       bands,
+                                                       alpha)
+{
+  coverage <- lapply(bands, function (x) x[[c('yTest_covered')]])
+  coverage <- do.call(rbind,coverage)
+  coverage_mean <- colMeans(coverage)
+
+  return(list(coverage_mean=coverage_mean,
+              coverage_mean_se=sqrt((coverage_mean*(1-coverage_mean))/nrow(coverage))))
+}
+
 read_all_rds <- function(folder)
 {
-  
+
   data_plot <- paste0(folder,list.files(pattern = ".RDS",path = folder)) %>%
-    map(readRDS) 
-  
+    map(readRDS)
+
   data_plot <- lapply(data_plot, function(x) {
     data <- matrix(NA,length(x),length(x[[1]]))
     colnames(data) <- names(x[[1]])
@@ -340,34 +430,61 @@ read_all_rds <- function(folder)
   return(data_plot)
 }
 
+read_all_rds_1d <- function(folder)
+{
+
+  data_plot <- paste0(folder,list.files(pattern = ".RDS",path = folder)) %>%
+    map(readRDS)
+  data_plot_error <- data_plot
+
+  data_plot <- lapply(data_plot, function(x) {
+    return(x[[1]]$coverage_mean)
+  })
+  names(data_plot) <- tools::file_path_sans_ext(list.files(pattern = ".RDS",
+                                                           path = folder))
+  data_plot <- ldply(data_plot, data.frame)
+
+  data_plot_error <- lapply(data_plot_error, function(x) {
+    return(x[[1]]$coverage_mean_se)
+  })
+  names(data_plot_error) <- tools::file_path_sans_ext(list.files(pattern = ".RDS",
+                                                                 path = folder))
+  data_plot_error <- ldply(data_plot_error, data.frame)
+
+  colnames(data_plot) <- c("method","coverage")
+  data_plot$error <- data_plot_error[,2]
+  return(data_plot)
+}
+
 plot_perfomance_n <- function(data_plot)
 {
-  
+
   g <- ggplot(data_plot) +
     geom_line(aes(x=n,y=global_coverage,color=.id,linetype=.id),size=2)+
     theme_minimal(base_size = 14)+ ylab("Global coverage")+
-    scale_y_continuous(labels = scales::percent_format(accuracy = 1))+ 
+    scale_y_continuous(labels = scales::percent_format(accuracy = 1))+
     expand_limits(y = c(0,1))+
-    theme(legend.title = element_blank()) 
+    theme(legend.title = element_blank())
   print(g)
-  
+
   g <- ggplot(data_plot) +
     geom_line(aes(x=n,y=mean_absolute_deviation_coverage,color=.id,linetype=.id),size=2)+
     theme_minimal(base_size = 14)+ ylab("Conditonal coverage absolute deviation")+
-    scale_y_continuous(labels = scales::percent_format(accuracy = 1))+ 
+    scale_y_continuous(labels = scales::percent_format(accuracy = 1))+
     expand_limits(y = 0)+
-    theme(legend.title = element_blank()) 
+    theme(legend.title = element_blank())
   print(g)
 
   g <- ggplot(data_plot) +
     geom_line(aes(x=n,y=average_size,color=.id,linetype=.id),size=2)+
     theme_minimal(base_size = 14)+ ylab("Average size")+
-    theme(legend.title = element_blank()) 
+    theme(legend.title = element_blank())
   print(g)
-  
+
   g <- ggplot(data_plot) +
     geom_line(aes(x=n,y=mean_absolute_deviation_size,color=.id,linetype=.id),size=2)+
     theme_minimal(base_size = 14)+ ylab("Size absolute deviation")+
-    theme(legend.title = element_blank()) 
+    theme(legend.title = element_blank())
   print(g)
 }
+
