@@ -20,11 +20,11 @@ generate_bimodal <- function(n,d,x=NULL)
   return(list(x=x,y=y))
 }
 
-n_fits <- 10 # total numer of I1 datasets
-n_repetitions <- 100 # total numer of I2 datasets
+n_fits <- 15 # total numer of I1 datasets
+n_repetitions <- 250 # total numer of I2 datasets
 n_each_set_grid <- c(200,500,1000,2500,5000) # size of I1 and I2
-n_test <- 1000 # to check coverage
-d <- 50
+n_test <- 500 # to check coverage
+d <- 20
 k <- 100
 percent_train <- 0.7
 alpha <- 0.1
@@ -32,11 +32,10 @@ alpha <- 0.1
 generate_data <- function(n,x=NULL) {generate_bimodal(n=n,d=d,x=x)}
 
 data_test_aux <- generate_data(n=n_test) # used to fix x test
-plot(data_test_aux$x[,1],data_test_aux$y)
-
 cd_split_global <- list()
 cd_split_local <- list()
 dist_split <- list()
+quantile_split <- list()
 reg_split <- list()
 reg_split_w <- list()
 for(n_each_index in 1:length(n_each_set_grid))
@@ -46,6 +45,7 @@ for(n_each_index in 1:length(n_each_set_grid))
   bands_global <- list()
   bands_local <- list()
   bands_dist <- list()
+  bands_quantile <- list()
   bands_reg <- list()
   bands_reg_w <- list()
   for(n_fits_index in 1:n_fits)
@@ -60,6 +60,11 @@ for(n_each_index in 1:length(n_each_set_grid))
                                   xValidation=data_I1$x[-which_train,,drop=FALSE],
                                   yValidation = data_I1$y[-which_train,drop=FALSE])
     
+    quantile_fit <- fit_quantile_forest(xTrain=data_I1$x[which_train,,drop=FALSE],
+                                        yTrain = data_I1$y[which_train,drop=FALSE],
+                                        xValidation=data_I1$x[-which_train,,drop=FALSE],
+                                        yValidation = data_I1$y[-which_train,drop=FALSE])
+    
     regression_fit <- fit_regression_forest(xTrain=data_I1$x[which_train,,drop=FALSE],
                                             yTrain = data_I1$y[which_train,drop=FALSE],
                                             xValidation=data_I1$x[-which_train,,drop=FALSE],
@@ -70,11 +75,12 @@ for(n_each_index in 1:length(n_each_set_grid))
                                                                   yValidation = data_I1$y[-which_train,drop=FALSE])
     
     
+    
     for(ll in 1:n_repetitions)
     {
       data_I2 <- generate_data(n=n_each_set_grid[n_each_index])
       pred_I2 <- predict(cde_fit,data_I2$x)
-      t_grid <- seq(0,max(pred_I2$CDE),length.out = 1000)
+      t_grid <- seq(0,max(pred_I2$CDE),length.out = 500)
       
       # CD-split global
       fit_cd_split_global <- cd_split_prediction_bands(cde_fit,
@@ -98,11 +104,19 @@ for(n_each_index in 1:length(n_each_set_grid))
                                                     xTest=data_test_aux$x,
                                                     alpha=alpha)
       
+      # Quantile-split 
+      fit_quantile_split <- quantile_split_prediction_bands(quantile_fit,
+                                                            xTrain=data_I2$x,
+                                                            yTrain = data_I2$y,
+                                                            xTest=data_test_aux$x,
+                                                            alpha=alpha)
+      
+      
+      data_test <- generate_data(n=n_test,x=data_test_aux$x)
       
       # Reg-split
       fit_reg_split <- reg_split_prediction_bands(regression_fit,
-                                                  xTrain=data_I2$x,
-                                                  yTrain = data_I2$y,
+                                                  xTrain=data_I2$x,yTrain = data_I2$y,
                                                   xTest=data_test_aux$x,
                                                   alpha=alpha,
                                                   y_grid = pred_I2$z)
@@ -115,6 +129,7 @@ for(n_each_index in 1:length(n_each_set_grid))
                                                                     alpha=alpha,
                                                                     y_grid = pred_I2$z)
       
+      #print(rep)
       data_test <- generate_data(n=n_test,x=data_test_aux$x)
       
       
@@ -129,6 +144,10 @@ for(n_each_index in 1:length(n_each_set_grid))
       # Dist-split 
       bands_dist[[rep]] <- dist_split_prediction_bands_evalY(fit_dist_split,
                                                              yTest=data_test$y)
+      
+      # Quantile-split 
+      bands_quantile[[rep]] <- quantile_split_prediction_bands_evalY(fit_quantile_split,
+                                                                     yTest=data_test$y)
       
       # reg-split 
       bands_reg[[rep]] <- reg_split_prediction_bands_evalY(fit_reg_split,
@@ -146,77 +165,46 @@ for(n_each_index in 1:length(n_each_set_grid))
                                                            bands_global,
                                                            alpha=alpha)
   cd_split_global[[n_each_index]]$n <- n_each_set_grid[n_each_index]
-  rm(bands_global)
   saveRDS(cd_split_global,file = paste0(folder,"cd_split_global.RDS"))
+  rm(bands_global)
+  gc()
   
   cd_split_local[[n_each_index]] <- eval_prediction_bands(xTest=data_test$x,
                                                           bands_local,
                                                           alpha=alpha)
   cd_split_local[[n_each_index]]$n <- n_each_set_grid[n_each_index]
-  rm(bands_local)
   saveRDS(cd_split_local,file = paste0(folder,"cd_split_local.RDS"))
+  rm(bands_local)
+  gc()
   
   dist_split[[n_each_index]] <- eval_prediction_bands(xTest=data_test$x,
                                                       bands_dist,
                                                       alpha=alpha)
   dist_split[[n_each_index]]$n <- n_each_set_grid[n_each_index]
-  rm(bands_dist)
   saveRDS(dist_split,file = paste0(folder,"dist_split.RDS"))
+  rm(bands_dist)
+  gc()
+  
+  quantile_split[[n_each_index]] <- eval_prediction_bands(xTest=data_test$x,
+                                                          bands_quantile,
+                                                          alpha=alpha)
+  quantile_split[[n_each_index]]$n <- n_each_set_grid[n_each_index]
+  saveRDS(quantile_split,file = paste0(folder,"quantile_split.RDS"))
   
   reg_split[[n_each_index]] <- eval_prediction_bands(xTest=data_test$x,
                                                      bands_reg,
                                                      alpha=alpha)
   reg_split[[n_each_index]]$n <- n_each_set_grid[n_each_index]
-  rm(bands_reg)
   saveRDS(reg_split,file = paste0(folder,"reg_split.RDS"))
+  rm(bands_reg)
+  gc()
   
   reg_split_w[[n_each_index]] <- eval_prediction_bands(xTest=data_test$x,
                                                        bands_reg_w,
                                                        alpha=alpha)
-  rm(bands_reg_w)
   reg_split_w[[n_each_index]]$n <- n_each_set_grid[n_each_index]
   saveRDS(reg_split_w,file = paste0(folder,"reg_split_w.RDS"))
+  rm(bands_reg_w)
+  gc()
+  
 }
-
-
-data_plot <- paste0(folder,list.files(pattern = ".RDS",path = folder)) %>%
-  map(readRDS) 
-
-data_plot <- lapply(data_plot, function(x) {
-  data <- matrix(NA,length(x),length(x[[1]]))
-  colnames(data) <- names(x[[1]])
-  for(ii in 1:length(x))
-  {
-    data[ii,] <- unlist(x[[ii]])
-  }
-  return(data)
-})
-names(data_plot) <- tools::file_path_sans_ext(list.files(pattern = ".RDS",path = folder))
-data_plot <- ldply(data_plot, data.frame)
-
-ggplot(data_plot) +
-  geom_line(aes(x=n,y=global_coverage,color=.id,linetype=.id),size=2)+
-  theme_minimal(base_size = 14)+ ylab("Global coverage")+
-  scale_y_continuous(labels = scales::percent_format(accuracy = 1))+ 
-  expand_limits(y = c(0,1))+
-  theme(legend.title = element_blank()) 
-
-
-ggplot(data_plot) +
-  geom_line(aes(x=n,y=mean_absolute_deviation_coverage,color=.id,linetype=.id),size=2)+
-  theme_minimal(base_size = 14)+ ylab("Conditonal coverage absolute deviation")+
-  scale_y_continuous(labels = scales::percent_format(accuracy = 1))+ 
-  expand_limits(y = 0)+
-  theme(legend.title = element_blank()) 
-
-
-ggplot(data_plot) +
-  geom_line(aes(x=n,y=average_size,color=.id,linetype=.id),size=2)+
-  theme_minimal(base_size = 14)+ ylab("Average size")+
-  theme(legend.title = element_blank()) 
-
-ggplot(data_plot) +
-  geom_line(aes(x=n,y=mean_absolute_deviation_size,color=.id,linetype=.id),size=2)+
-  theme_minimal(base_size = 14)+ ylab("Size absolute deviation")+
-  theme(legend.title = element_blank()) 
-

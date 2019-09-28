@@ -1,7 +1,7 @@
 source("../requirements.R")
 source("../base_functions.R")
 
-folder <- "../rds/gamma/"
+folder <- "../rds/gamma_v2/"
 dir.create(folder, showWarnings = FALSE)
 
 # if x is given, only generate response again
@@ -12,15 +12,15 @@ generate_gamma <- function(n,d,x=NULL)
     x=matrix(runif(n*d,-5,5),n,d)
   }
   # response
-  y=rgamma(nrow(x),1+2*abs(x[,1]),1+2*abs(x[,1]))
+  y=5*x[,1]+rgamma(nrow(x),1+2*abs(x[,1]),1+2*abs(x[,1]))
   return(list(x=x,y=y))
 }
 
-n_fits <- 10 # total numer of I1 datasets
-n_repetitions <- 1000 # total numer of I2 datasets
+n_fits <- 15 # total numer of I1 datasets
+n_repetitions <- 250 # total numer of I2 datasets
 n_each_set_grid <- c(200,500,1000,2500,5000) # size of I1 and I2
-n_test <- 2000 # to check coverage
-d <- 50
+n_test <- 500 # to check coverage
+d <- 20
 k <- 100
 percent_train <- 0.7
 alpha <- 0.1
@@ -33,6 +33,7 @@ plot(data_test_aux$x[,1],data_test_aux$y)
 cd_split_global <- list()
 cd_split_local <- list()
 dist_split <- list()
+quantile_split <- list()
 reg_split <- list()
 reg_split_w <- list()
 for(n_each_index in 1:length(n_each_set_grid))
@@ -42,6 +43,7 @@ for(n_each_index in 1:length(n_each_set_grid))
   bands_global <- list()
   bands_local <- list()
   bands_dist <- list()
+  bands_quantile <- list()
   bands_reg <- list()
   bands_reg_w <- list()
   for(n_fits_index in 1:n_fits)
@@ -56,10 +58,16 @@ for(n_each_index in 1:length(n_each_set_grid))
                                   xValidation=data_I1$x[-which_train,,drop=FALSE],
                                   yValidation = data_I1$y[-which_train,drop=FALSE])
     
+    quantile_fit <- fit_quantile_forest(xTrain=data_I1$x[which_train,,drop=FALSE],
+                                        yTrain = data_I1$y[which_train,drop=FALSE],
+                                        xValidation=data_I1$x[-which_train,,drop=FALSE],
+                                        yValidation = data_I1$y[-which_train,drop=FALSE])
+    
     regression_fit <- fit_regression_forest(xTrain=data_I1$x[which_train,,drop=FALSE],
                                             yTrain = data_I1$y[which_train,drop=FALSE],
                                             xValidation=data_I1$x[-which_train,,drop=FALSE],
                                             yValidation = data_I1$y[-which_train,drop=FALSE])
+    
     regression_fit_mean_error <- fit_regression_mean_error_forest(xTrain=data_I1$x[which_train,,drop=FALSE],
                                                                   yTrain = data_I1$y[which_train,drop=FALSE],
                                                                   xValidation=data_I1$x[-which_train,,drop=FALSE],
@@ -70,11 +78,12 @@ for(n_each_index in 1:length(n_each_set_grid))
     {
       data_I2 <- generate_data(n=n_each_set_grid[n_each_index])
       pred_I2 <- predict(cde_fit,data_I2$x)
-      t_grid <- seq(0,max(pred_I2$CDE),length.out = 250)
+      t_grid <- seq(0,max(pred_I2$CDE),length.out = 500)
       
       # CD-split global
       fit_cd_split_global <- cd_split_prediction_bands(cde_fit,
-                                                       xTrain=data_I2$x,yTrain = data_I2$y,
+                                                       xTrain=data_I2$x,
+                                                       yTrain = data_I2$y,
                                                        k=nrow(data_I2$x),
                                                        xTest=data_test_aux$x,
                                                        t_grid=t_grid,
@@ -88,11 +97,19 @@ for(n_each_index in 1:length(n_each_set_grid))
                                                       t_grid=t_grid,
                                                       alpha=alpha)
       
+      
       # Dist-split 
       fit_dist_split <- dist_split_prediction_bands(cde_fit,
                                                     xTrain=data_I2$x,yTrain = data_I2$y,
                                                     xTest=data_test_aux$x,
                                                     alpha=alpha)
+      
+      # Quantile-split 
+      fit_quantile_split <- quantile_split_prediction_bands(quantile_fit,
+                                                            xTrain=data_I2$x,
+                                                            yTrain = data_I2$y,
+                                                            xTest=data_test_aux$x,
+                                                            alpha=alpha)
       
       
       # Reg-split
@@ -121,8 +138,13 @@ for(n_each_index in 1:length(n_each_set_grid))
       bands_local[[rep]] <- cd_split_prediction_bands_evalY(fit_cd_split_local,
                                                             yTest=data_test$y)
       
+      
       # Dist-split 
       bands_dist[[rep]] <- dist_split_prediction_bands_evalY(fit_dist_split,
+                                                             yTest=data_test$y)
+      
+      # Quantile-split 
+      bands_quantile[[rep]] <- quantile_split_prediction_bands_evalY(fit_quantile_split,
                                                              yTest=data_test$y)
       
       # reg-split 
@@ -150,12 +172,20 @@ for(n_each_index in 1:length(n_each_set_grid))
   cd_split_local[[n_each_index]]$n <- n_each_set_grid[n_each_index]
   saveRDS(cd_split_local,file = paste0(folder,"cd_split_local.RDS"))
   rm(bands_local)
+  
   dist_split[[n_each_index]] <- eval_prediction_bands(xTest=data_test$x,
                                                       bands_dist,
                                                       alpha=alpha)
   dist_split[[n_each_index]]$n <- n_each_set_grid[n_each_index]
   saveRDS(dist_split,file = paste0(folder,"dist_split.RDS"))
   rm(bands_dist)
+  
+  quantile_split[[n_each_index]] <- eval_prediction_bands(xTest=data_test$x,
+                                                      bands_quantile,
+                                                      alpha=alpha)
+  quantile_split[[n_each_index]]$n <- n_each_set_grid[n_each_index]
+  saveRDS(quantile_split,file = paste0(folder,"quantile_split.RDS"))
+  rm(bands_quantile)
   
   reg_split[[n_each_index]] <- eval_prediction_bands(xTest=data_test$x,
                                                      bands_reg,

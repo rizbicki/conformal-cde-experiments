@@ -1,7 +1,7 @@
 fit_density_forest <- function(xTrain,yTrain,xValidation,yValidation,nCores=6)
 {
   fit=fitFlexCoDE(xTrain=xTrain,zTrain=yTrain,
-                  xValidation=xValidation,zValidation=yValidation,nIMax = 20,
+                  xValidation=xValidation,zValidation=yValidation,nIMax = 35,
                   regressionFunction = regressionFunction.Forest,
                   regressionFunction.extra = list(nCores=nCores))
   return(fit)
@@ -27,6 +27,14 @@ fit_regression_mean_error_forest <- function(xTrain,yTrain,xValidation,yValidati
   class(fit) <- "forest_weighted"
   return(fit)
 }
+
+fit_quantile_forest <- function(xTrain,yTrain,xValidation,yValidation)
+{
+  fit <- quantregForest(x=rbind(xTrain,xValidation),
+                        y=c(yTrain,yValidation),nthreads = 7)
+  return(fit)
+}
+
 
 fit_density_knn <- function(xTrain,yTrain,xValidation,yValidation,nCores=6)
 {
@@ -89,7 +97,7 @@ fit_regression_mean_error_knn <- function(xTrain,yTrain,xValidation,yValidation)
   class(fit_mean) <- "KNN"
   
   fit_error <- list(xTrain=xValidation,
-                    yTrain=yValidation,
+                    yTrain=abs(yValidation-pred_val),
                     k=best_k_error)
   class(fit_error) <- "KNN"
   
@@ -170,13 +178,16 @@ cd_split_prediction_bands <- function(cde_fit,
     #aux <- profile_density_m(t_grid,pred_train$z,
     #                           pred_train$CDE)
     
+    g_test <- matrix(NA,nrow(xTest),length(t_grid))
     for(ii in 1:nrow(xTest))
     {
-      g_test <- profile_density(t_grid,pred_test$z,
-                                pred_test$CDE[ii,])
-      neighbors <- which_neighbors(g_train,t(g_test),k=k)
-      ths[ii] <- quantile(conformity_score_train[neighbors],probs=alpha)
-      #prediction_bands[[ii]] <- pred_test$z[pred_test$CDE[ii,]>=ths]
+      g_test[ii,] <- profile_density(t_grid,pred_test$z,
+                                     pred_test$CDE[ii,])
+    }
+    neighbors <- which_neighbors(g_train,g_test,k=k)
+    for(ii in 1:nrow(xTest))
+    {
+      ths[ii] <- quantile(conformity_score_train[neighbors[ii,]],probs=alpha)
       prediction_bands_which_belong[[ii]] <- pred_test$CDE[ii,]>=ths[ii]
     }
     
@@ -211,6 +222,114 @@ cd_split_prediction_bands_evalY <- function(fit_cd_split,yTest)
   return(fit_cd_split)
 }
 
+lower_upper_limits <- function(density,z_grid,t)
+{
+  first_interval <- density>=t
+  rle_x <- rle(as.numeric(first_interval))
+  end = cumsum(rle_x$lengths)
+  start = c(1, lag(end)[-1] + 1)
+  lower <- z_grid[start[which(rle_x$values==1)[1]]]
+  upper <- z_grid[end[which(rle_x$values==1)[1]]]
+  return(c(lower,upper))
+}
+
+# returns prediction bands for each element of xTest
+# xTrain and yTrain are is I2, hold out data not used
+#                          to fit the density cde_fit
+# t_grid is a grid of values for the f(.|x)
+cd_split_intervals_prediction_bands <- function(cde_fit,
+                                                xTrain,yTrain,
+                                                k=nrow(xTrain),
+                                                xTest,
+                                                t_grid,
+                                                alpha=0.1)
+{
+  pred_test <- predict(cde_fit,xTest)
+  pred_train <- predict(cde_fit,xTrain)
+  # observed densities:
+  which_train_belong_to_each_interval <- matrix(FALSE,nrow(xTrain),length(t_grid))
+  for(ii in 1:nrow(xTrain))
+  {
+    for(tt in seq_along(t_grid))
+    {
+      limits <- lower_upper_limits(pred_train$CDE[ii,],pred_train$z,t_grid[tt])
+      if(is.na(limits[1])|is.na(limits[2]))
+      {
+        break;
+      }
+      which_train_belong_to_each_interval[ii,tt] <- (limits[1]<=yTrain[ii])&(yTrain[ii]<=limits[2])  
+      if(!which_train_belong_to_each_interval[ii,tt])
+        break;
+    }
+  }
+  prediction_bands_limits <- matrix(NA,nrow(xTest),2)
+  if(k!=nrow(xTrain))
+  {
+    ths <- rep(NA,nrow(xTest))
+    g_train <- matrix(NA,nrow(xTrain),length(t_grid))
+    for(ii in 1:nrow(xTrain))
+    {
+      g_train[ii,] <- profile_density(t_grid,pred_train$z,
+                                      pred_train$CDE[ii,])
+    }
+    
+    g_test <- matrix(NA,nrow(xTest),length(t_grid))
+    for(ii in 1:nrow(xTest))
+    {
+      g_test[ii,] <- profile_density(t_grid,pred_test$z,
+                                     pred_test$CDE[ii,])
+    }
+    neighbors <- which_neighbors(g_train,g_test,k=k)
+    
+    
+    for(ii in 1:nrow(xTest))
+    {
+      col <- which.min(abs(1-alpha-apply(which_train_belong_to_each_interval[neighbors[ii,],],2,mean)))
+      ths[ii] <- t_grid[col]
+      limits <- lower_upper_limits(density = pred_test$CDE[ii,],
+                                   z_grid = pred_train$z,
+                                   t=ths[ii])
+      prediction_bands_limits[ii,] <- limits
+      if(is.na(limits[1])|is.na(limits[2]))
+      {
+        prediction_bands_limits[ii,] <- c(0,0)
+      }
+    }
+    
+  } else {
+    col <- which.min(abs(1-alpha-apply(which_train_belong_to_each_interval,2,mean)))
+    ths <- t_grid[col]
+    for(ii in 1:nrow(xTest))
+    {
+      limits <- lower_upper_limits(pred_test$CDE[ii,],pred_train$z,ths)
+      prediction_bands_limits[ii,] <- limits
+      if(is.na(limits[1])|is.na(limits[2]))
+      {
+        prediction_bands_limits[ii,] <- c(0,0)
+      }
+    }
+  }
+  
+  return(list(prediction_bands_limits=prediction_bands_limits,
+              y_grid=pred_test$z,ths=ths,pred_test=pred_test))
+  
+  
+}
+
+
+# Returns fit_cd_split with indicator of if each yTest  belongs to prediction band
+#        (used for diagnostics)
+cd_split_interval_prediction_bands_evalY <- function(fit_cd_interval_split,
+                                                     yTest)
+{
+  yTest_covered <- (fit_cd_interval_split$prediction_bands_limits[,1]<=yTest)&(yTest<=fit_cd_interval_split$prediction_bands_limits[,2])
+  fit_cd_interval_split$yTest_covered <- yTest_covered
+  fit_cd_interval_split$pred_test <- NULL
+  fit_cd_interval_split$prediction_bands_size <- fit_cd_interval_split$prediction_bands_limits[,2]-fit_cd_interval_split$prediction_bands_limits[,1]
+  fit_cd_interval_split$prediction_bands <- NULL
+  return(fit_cd_interval_split)
+}
+
 
 cum_dist <- function(y_grid,cde_estimates,y_values)
 {
@@ -224,31 +343,44 @@ cum_dist <- function(y_grid,cde_estimates,y_values)
 # returns prediction bands for each element of xTest
 # xTrain and yTrain are is I2, hold out data not used
 #                          to fit the density cde_fit
-# t_grid is a grid of values for the f(.|x)
 dist_split_prediction_bands <- function(cde_fit,
                                         xTrain,yTrain,
                                         xTest,
                                         alpha=0.1,
-                                        yTest=NULL)
+                                        yTest=NULL, 
+                                        median=FALSE)
 {
   pred_test <- predict(cde_fit,xTest)
   pred_train <- predict(cde_fit,xTrain)
   
-  ths = quantile(cum_dist(pred_train$z,pred_train$CDE,yTrain),
-                 probs = c(alpha/2,1-alpha/2))
-  
+  cum_dist_evaluated_train <- cum_dist(pred_train$z,pred_train$CDE,yTrain)
+  if(median==FALSE)
+  {
+    ths <-  quantile(cum_dist_evaluated_train,
+                     probs = c(alpha/2,1-alpha/2))
+  } else {
+    ths <- quantile(abs(cum_dist_evaluated_train-0.5),probs = 1-alpha)
+  }
   prediction_bands_which_belong <- list()
   FTest <- matrix(NA,nrow(xTest),length(pred_train$z))
   for (ii in 1:nrow(xTest)){
     FTest[ii,] <- cumsum(pred_test$CDE[ii,])*diff(pred_train$z)[1]
-    prediction_bands_which_belong[[ii]] <- FTest[ii,]>=ths[1]&FTest[ii,]<=ths[2]
+    if(median==FALSE)
+    {
+      prediction_bands_which_belong[[ii]] <- FTest[ii,]>=ths[1]&FTest[ii,]<=ths[2]  
+    } else {
+      prediction_bands_which_belong[[ii]] <- abs(FTest[ii,]-0.5)<=ths
+    }
+    
     
   }
   
+  
   return(list(prediction_bands=prediction_bands_which_belong,
-              y_grid=pred_train$z,FTest=FTest,ths=ths))
+              y_grid=pred_train$z,FTest=FTest,ths=ths,median=median))
   
 }
+
 
 # Returns fit_dist_split with indicator of if each yTest  belongs to prediction band
 #        (used for diagnostics)
@@ -259,8 +391,12 @@ dist_split_prediction_bands_evalY <- function(fit_dist_split,
   ths <- fit_dist_split$ths
   for (ii in 1:length(yTest)){
     which_closest <- which.min(abs(fit_dist_split$y_grid-yTest[ii]))
-    yTest_covered[ii] <- fit_dist_split$FTest[ii,which_closest]>=ths[1]&fit_dist_split$FTest[ii,which_closest]<=ths[2]
-    
+    if(fit_dist_split$median==FALSE)
+    {
+      yTest_covered[ii] <- fit_dist_split$FTest[ii,which_closest]>=ths[1]&fit_dist_split$FTest[ii,which_closest]<=ths[2]  
+    } else {
+      yTest_covered[ii] <- abs(fit_dist_split$FTest[ii,which_closest]-0.5)<=ths  
+    }
   }
   fit_dist_split$yTest_covered <- yTest_covered
   fit_dist_split$prediction_bands_size <- sapply(fit_dist_split$prediction_bands,
@@ -271,6 +407,37 @@ dist_split_prediction_bands_evalY <- function(fit_dist_split,
   return(fit_dist_split)
 }
 
+
+# Returns fit_dist_split with indicator of if each yTest  belongs to prediction band
+#        (used for diagnostics)
+quantile_split_prediction_bands_evalY <- function(fit_quantile_split,
+                                                  yTest)
+{
+  fit_quantile_split$yTest_covered <- fit_quantile_split$limits[,1]<=yTest & fit_quantile_split$limits[,2]>=yTest
+  fit_quantile_split$prediction_bands_size <- fit_quantile_split$limits[,2]-fit_quantile_split$limits[,1]
+  fit_quantile_split$limits <- NULL
+  return(fit_quantile_split)
+}
+
+
+# returns prediction bands for each element of xTest
+# xTrain and yTrain are is I2, hold out data not used
+#                          to fit the density cde_fit
+quantile_split_prediction_bands <- function(quantile_fit,
+                                            xTrain,yTrain,
+                                            xTest,
+                                            alpha=0.1,
+                                            yTest=NULL)
+{
+  pred_test <- predict(quantile_fit,xTest,what=c(alpha/2,1-alpha/2))
+  pred_train <- predict(quantile_fit,xTrain,what=c(alpha/2,1-alpha/2))
+  E <- apply(cbind(pred_train[,1]-yTrain,yTrain-pred_train[,2]),1,max)
+  Q <- quantile(E,probs = 1-alpha)
+  
+  limits <- cbind(pred_test[,1]-Q,pred_test[,2]+Q) 
+  return(list(limits=limits))
+  
+}
 
 # returns prediction bands for each element of xTest
 # xTrain and yTrain are is I2, hold out data not used
@@ -455,30 +622,42 @@ read_all_rds <- function(folder)
   return(data_plot)
 }
 
-read_all_rds_1d <- function(folder)
+read_all_rds_1d <- function(folder,remove="")
 {
   
-  data_plot <- paste0(folder,list.files(pattern = ".RDS",path = folder)) %>%
+  list_files <- list.files(pattern = ".RDS",path = folder)
+  list_files <- list_files[-grep(remove,list_files)]
+  data_plot <- paste0(folder,list_files) %>%
     map(readRDS)
   data_plot_error <- data_plot
   
   data_plot <- lapply(data_plot, function(x) {
     return(x[[1]]$coverage_mean)
   })
-  names(data_plot) <- tools::file_path_sans_ext(list.files(pattern = ".RDS",
-                                                           path = folder))
+  names(data_plot) <- tools::file_path_sans_ext(list_files)
   data_plot <- ldply(data_plot, data.frame)
   
   data_plot_error <- lapply(data_plot_error, function(x) {
     return(x[[1]]$coverage_mean_se)
   })
-  names(data_plot_error) <- tools::file_path_sans_ext(list.files(pattern = ".RDS",
-                                                                 path = folder))
+  names(data_plot_error) <- tools::file_path_sans_ext(list_files)
   data_plot_error <- ldply(data_plot_error, data.frame)
   
   colnames(data_plot) <- c("method","coverage")
   data_plot$error <- data_plot_error[,2]
   return(data_plot)
+}
+
+read_all_rds_region_1d <- function(folder)
+{
+  list_files <- list.files(pattern = ".RDS",path = folder)
+  list_files <- list_files[grep("regions",list_files)]
+  lapply(paste0(folder,list_files),readRDS)
+  d <- map(paste0(folder,list_files), readRDS)
+  names(d) <- paste0(folder,list_files)
+  names(d) <- tools::file_path_sans_ext(list_files)
+  
+  return(d)
 }
 
 plot_perfomance_n <- function(data_plot)
@@ -513,3 +692,143 @@ plot_perfomance_n <- function(data_plot)
   print(g)
 }
 
+plot_perfomance_n_paper <- function(data_plot,title,folder,which_plot=NULL)
+{
+  if(!is.null(which_plot))
+  {
+    data_plot <- data_plot %>% filter(.id %in% which_plot)
+  }
+  data_plot$.id <- revalue(data_plot$.id, c("cd_split_local"="Local CD-split", 
+                                            "reg_split"="Reg-split",
+                                            "dist_split"="Dist-split",
+                                            "cd_split_global"="Global CD-split",
+                                            "reg_split_w"="Local Reg-split",
+                                            "quantile_split"="Quantile-split"))
+  data_plot$mean_absolute_deviation_coverage_plus <-data_plot$mean_absolute_deviation_coverage+2*data_plot$mean_absolute_deviation_coverage_se
+  data_plot$mean_absolute_deviation_coverage_minus <-data_plot$mean_absolute_deviation_coverage-2*data_plot$mean_absolute_deviation_coverage_se
+  data_plot$average_size_plus <-data_plot$average_size+2*data_plot$average_size_se
+  data_plot$average_size_minus <-data_plot$average_size-2*data_plot$average_size_se
+  
+  
+  g <- ggplot(data_plot) +
+    geom_line(aes(x=n,y=mean_absolute_deviation_coverage,color=.id,linetype=.id),size=2.2)+
+    theme_bw()+ ylab("Conditonal coverage absolute deviation")+
+    scale_y_continuous(labels = scales::percent_format(accuracy = 1))+
+    geom_ribbon(aes(x=n,ymin=mean_absolute_deviation_coverage_minus,
+                    ymax=mean_absolute_deviation_coverage_plus,fill=.id),
+                alpha=0.3)+
+    expand_limits(y = 0)+
+    theme(legend.title = element_blank())+
+    theme(axis.text=element_text(size=16),
+          axis.title=element_text(size=20,face="bold"),
+          legend.title = element_blank(),
+          legend.position = "top", 
+          plot.title = element_text(size = 25, face = "bold"),
+          legend.text=element_text(size=18),
+          legend.key.width=unit(2,"cm"))+
+    ggtitle(title)+
+    guides(color=guide_legend(nrow=2))
+  ggsave(paste0("figures/",folder,"/",title,"_conditional_coverage.png"),
+         width = 8.6,height = 6)
+  
+  g <- ggplot(data_plot) +
+    geom_line(aes(x=n,y=average_size,color=.id,linetype=.id),size=2.2)+
+    geom_ribbon(aes(x=n,ymin=average_size_minus,
+                    ymax=average_size_plus,fill=.id),
+                alpha=0.3)+
+    theme_bw()+ ylab("Average size")+
+    theme(legend.title = element_blank())+
+    theme(axis.text=element_text(size=16),
+          axis.title=element_text(size=20,face="bold"),
+          legend.title = element_blank(),
+          legend.position = "top", 
+          plot.title = element_text(size = 25, face = "bold"),
+          legend.text=element_text(size=18),
+          legend.key.width=unit(2,"cm"))+
+    ggtitle(title)+
+    guides(color=guide_legend(nrow=2))
+  ggsave(paste0("figures/",folder,"/",title,"_size.png"),
+         width = 8.6,height = 6)
+  
+}
+
+plot_conditional_coverage_1d <- function(data_plot,folder)
+{
+  g <- ggplot(data = data_plot %>% filter(method%in%c("CD-split","Reg-split","Dist-split")))+
+    geom_line(aes(x=x_grid,y=coverage,color=method),size=0.6)+
+    geom_ribbon(aes(x=x_grid,ymin=coverage_minus,ymax=coverage_plus,fill=method),alpha=0.3)+
+    theme_bw()+coord_cartesian(ylim=c(0,1))+
+    ylab("Conditional coverage")+
+    geom_abline(intercept=0.9,slope=0,size=1.2)+
+    scale_y_continuous(labels = scales::percent)+
+    xlab("x")+
+    theme(axis.text=element_text(size=16),
+          axis.title=element_text(size=20,face="bold"),
+          legend.title = element_blank(),
+          legend.position = c(0.01, 0.3), 
+          legend.justification = c(0, 1),
+          plot.title = element_text(size = 25, face = "bold"),
+          legend.text=element_text(size=18))+
+    ggtitle("Conditional coverage")
+  ggsave(paste0("figures/",folder,"/1d_examples_bimodal_conditional_coverage.png"),
+         plot=g,width = 10,height = 6)
+}
+
+plot_predictive_regions_1d <- function(data_plot_regions,folder)
+{
+  ggplot()+
+    geom_point(data = data_plot_regions$cd_local_regions$data_plot_original,
+               aes(x=x,y=y))+
+    geom_point(data=data_plot_regions$cd_local_regions$data_plot_bands,
+               aes(x=x,y=y),alpha=0.02,color="red")+
+    theme_bw()+
+    theme(axis.text=element_text(size=16),
+          axis.title=element_text(size=20,face="bold"),
+          legend.title = element_blank(),
+          plot.title = element_text(size = 25, face = "bold"))+
+    ggtitle("CD-split")
+  ggsave(paste0("figures/",folder,"/1d_examples_bimodal_cd_split.png"),width = 10,height = 6)
+  
+  ggplot()+
+    geom_point(data = data_plot_regions$dist_split_regions$data_plot_original,
+               aes(x=x,y=y))+
+    geom_point(data=data_plot_regions$dist_split_regions$data_plot_bands,
+               aes(x=x,y=y),alpha=0.02,color="green")+
+    theme_bw()+
+    theme(axis.text=element_text(size=16),
+          axis.title=element_text(size=20,face="bold"),
+          legend.title = element_blank(),
+          plot.title = element_text(size = 25, face = "bold"))+
+    ggtitle("Dist-split")
+  ggsave(paste0("figures/",folder,"/1d_examples_bimodal_dist_split.png"),width = 10,height = 6)
+  
+  
+  ggplot()+
+    geom_point(data = data_plot_regions$reg_split_regions$data_plot_original,
+               aes(x=x,y=y))+
+    geom_point(data=data_plot_regions$reg_split_regions$data_plot_bands,
+               aes(x=x,y=y),alpha=0.02,color="blue")+
+    theme_bw()+
+    theme(axis.text=element_text(size=16),
+          axis.title=element_text(size=20,face="bold"),
+          legend.title = element_blank(),
+          plot.title = element_text(size = 25, face = "bold"))+
+    ggtitle("Reg-split")
+  ggsave(paste0("figures/",folder,"/1d_examples_bimodal_reg_split.png"),width = 10,height = 6)
+  
+  
+  ggplot()+
+    geom_point(data = data_plot_regions$reg_split_w_regions$data_plot_original,
+               aes(x=x,y=y))+
+    geom_point(data=data_plot_regions$reg_split_w_regions$data_plot_bands,
+               aes(x=x,y=y),alpha=0.02,color="blue")+
+    theme_bw()+
+    theme(axis.text=element_text(size=16),
+          axis.title=element_text(size=20,face="bold"),
+          legend.title = element_blank(),
+          plot.title = element_text(size = 25, face = "bold"))+
+    ggtitle("Reg-split weighted")
+  ggsave(paste0("figures/",folder,"/1d_examples_bimodal_reg_split_w.png"),width = 10,height = 6)
+  
+  
+}
